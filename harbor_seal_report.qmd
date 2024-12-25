@@ -1,16 +1,23 @@
 ---
 title: "Harbor Seal Haul-out Behavior Analysis"
 author: "Your Name"
-format: html
-editor: visual
+format:
+  html:
+    embed-resources: true
+    self-contained: true
+execute:
+  echo: false
+  warning: false
+  message: false
+  output: false
+editor: source
 ---
 
 ## Introduction
 
-This analysis explores the factors influencing harbor seal haul-out behavior, specifically examining how environmental variables and time of day affect the number of seals observed.
+The dataset 
 
-```{r setup, include=FALSE}
-knitr::opts_chunk$set(echo = TRUE)
+```{r setup}
 library(tidyverse)
 library(lme4)
 library(lubridate)
@@ -46,6 +53,9 @@ df <- df %>%
 First, we visualize the daily pattern of seal haul-out behavior.
 
 ```{r daily-pattern}
+#| output: true
+#| label: fig-daily-pattern
+#| fig-cap: "Daily pattern of harbor seal haul-out behavior showing mean counts and standard errors"
 df %>%
     group_by(time) %>%
     summarize(
@@ -73,10 +83,10 @@ df %>%
 
 We explored several modeling approaches before settling on a log-transformed linear mixed model. Key considerations included:
 
-1. High proportion of zeros in the data
-2. Right-skewed distribution of non-zero counts
-3. Temporal autocorrelation
-4. Daily patterns in seal behavior
+1.  High proportion of zeros in the data
+2.  Right-skewed distribution of non-zero counts
+3.  Temporal autocorrelation
+4.  Daily patterns in seal behavior
 
 ### Final Model
 
@@ -117,10 +127,10 @@ car::vif(final_model)
 
 The analysis revealed several key findings:
 
-1. Time of day has a significant quadratic effect on seal numbers, with peak haul-out occurring around midday
-2. Temperature shows a negative relationship with seal numbers
-3. Tide level does not significantly affect seal numbers when they are present
-4. There is substantial day-to-day variation in seal numbers (captured by the random effect)
+1.  Time of day has a significant quadratic effect on seal numbers, with peak haul-out occurring around midday
+2.  Temperature shows a negative relationship with seal numbers
+3.  Tide level does not significantly affect seal numbers when they are present
+4.  There is substantial day-to-day variation in seal numbers (captured by the random effect)
 
 ### Effect Sizes
 
@@ -138,11 +148,10 @@ coef_summary %>%
 
 ## Discussion
 
-[Add interpretation of results and biological significance]
+\[Add interpretation of results and biological significance\]
 
 ## References
 
-[Add relevant citations]
+\[Add relevant citations\]
 
 <iframe width="560" height="315" src="https://www.youtube.com/embed/8wkbgOxaHTM?si=iniq7cpYKSyEzBIU" title="YouTube video player" frameborder="0" allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share" referrerpolicy="strict-origin-when-cross-origin" allowfullscreen></iframe>
-
