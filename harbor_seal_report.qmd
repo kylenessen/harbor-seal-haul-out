@@ -1,0 +1,148 @@
+---
+title: "Harbor Seal Haul-out Behavior Analysis"
+author: "Your Name"
+format: html
+editor: visual
+---
+
+## Introduction
+
+This analysis explores the factors influencing harbor seal haul-out behavior, specifically examining how environmental variables and time of day affect the number of seals observed.
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+library(tidyverse)
+library(lme4)
+library(lubridate)
+```
+
+## Data Processing
+
+```{r data-processing}
+# Read and process data
+df <- read_csv("seals.csv") %>%
+    rename(
+        time = `Time of Day`,
+        date = `Full Date`,
+        seals = `#Seals`,
+        temp1 = `Temperature(C)`,
+        temp2 = `Temperature B (C)`,
+        avgTemp = `Average Temp (C)`,
+        tide = `Tide (ft)`
+    )
+
+# Create centered time variables
+df <- df %>%
+    mutate(
+        datetime = mdy_hms(date),
+        hourOfDay = hour(datetime) + minute(datetime) / 60,
+        hourOfDay_centered = hourOfDay - mean(hourOfDay),
+        hourOfDay2_centered = hourOfDay_centered^2
+    )
+```
+
+## Exploratory Analysis
+
+First, we visualize the daily pattern of seal haul-out behavior.
+
+```{r daily-pattern}
+df %>%
+    group_by(time) %>%
+    summarize(
+        mean_seals = mean(seals, na.rm = TRUE),
+        se_seals = sd(seals, na.rm = TRUE) / sqrt(n())
+    ) %>%
+    ggplot(aes(x = time, y = mean_seals)) +
+    geom_col() +
+    geom_errorbar(
+        aes(
+            ymin = mean_seals - se_seals,
+            ymax = mean_seals + se_seals
+        ),
+        width = 0.2
+    ) +
+    theme_bw() +
+    labs(
+        x = "Time of Day",
+        y = "Average Number of Harbor Seals Hauled Out",
+        title = "Daily Pattern of Harbor Seal Haul-out Behavior"
+    )
+```
+
+## Model Development
+
+We explored several modeling approaches before settling on a log-transformed linear mixed model. Key considerations included:
+
+1. High proportion of zeros in the data
+2. Right-skewed distribution of non-zero counts
+3. Temporal autocorrelation
+4. Daily patterns in seal behavior
+
+### Final Model
+
+We fit a linear mixed model to log-transformed non-zero counts:
+
+```{r final-model}
+# Create dataset for analysis
+df_counts <- df %>%
+    filter(seals > 0) %>%
+    mutate(
+        log_seals = log(seals),
+        date = as.Date(datetime)
+    )
+
+# Fit model
+final_model <- lmer(
+    log_seals ~ tide + avgTemp + hourOfDay2_centered +
+        (1 | date),
+    data = df_counts
+)
+
+# Model summary
+summary(final_model)
+```
+
+### Model Diagnostics
+
+```{r model-diagnostics}
+# Basic diagnostic plots
+par(mfrow = c(2, 2))
+plot(final_model)
+
+# Check for collinearity
+car::vif(final_model)
+```
+
+## Results
+
+The analysis revealed several key findings:
+
+1. Time of day has a significant quadratic effect on seal numbers, with peak haul-out occurring around midday
+2. Temperature shows a negative relationship with seal numbers
+3. Tide level does not significantly affect seal numbers when they are present
+4. There is substantial day-to-day variation in seal numbers (captured by the random effect)
+
+### Effect Sizes
+
+```{r effect-sizes}
+# Extract and transform coefficients
+coef_summary <- summary(final_model)$coefficients
+coef_summary %>%
+    as.data.frame() %>%
+    rownames_to_column("Parameter") %>%
+    knitr::kable(
+        caption = "Model Coefficients",
+        digits = 3
+    )
+```
+
+## Discussion
+
+[Add interpretation of results and biological significance]
+
+## References
+
+[Add relevant citations]
+
+<iframe width="560" height="315" src="https://www.youtube.com/embed/8wkbgOxaHTM?si=iniq7cpYKSyEzBIU" title="YouTube video player" frameborder="0" allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share" referrerpolicy="strict-origin-when-cross-origin" allowfullscreen></iframe>
+

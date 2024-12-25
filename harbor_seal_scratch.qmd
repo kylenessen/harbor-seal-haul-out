@@ -1,0 +1,174 @@
+---
+title: "Untitled"
+format: html
+editor: visual
+---
+
+```{r}
+library(tidyverse)
+library(lme4)
+library(lubridate)
+
+df <- read.csv('/Users/kylenessen/Downloads/seals.csv')
+
+df <- df %>%
+  rename(
+    time = Time.of.Day,
+    date = Full.Date,
+    seals = X.Seals,
+    temp1 = Temperature.C.,
+    temp2 = Temperature.B..C.,
+    avgTemp = Average.Temp..C.,
+    tide = Tide..ft.
+  )
+
+df <- df %>%
+  # Combine date and time into datetime
+  mutate(
+    datetime = mdy_hms(date),
+    # Calculate minutes since start of study
+    minutesSinceStart = as.numeric(difftime(datetime, min(datetime), units = "mins")),
+    # Create hour of day for potential daily patterns
+    hourOfDay = hour(datetime) + minute(datetime)/60
+  )
+```
+
+```{r}
+model0 <- lm(seals ~ 1, data = df)
+summary(model0)
+```
+
+```{r}
+model1 <- lmer(seals ~ tide + avgTemp + minutesSinceStart + (1|hourOfDay), 
+               data = df)
+summary(model1)
+
+```
+
+```{r}
+poisson_model <- glmer(seals ~ tide + avgTemp + hourOfDay + 
+                      (1|minutesSinceStart), 
+                      family = poisson,
+                      data = df)
+summary(poisson_model)
+library(performance)
+performance::check_model(poisson_model)
+
+
+df <- df %>%
+  mutate(hourOfDay2 = hourOfDay^2)
+
+poisson_model_quad <- glmer(seals ~ tide + avgTemp + hourOfDay + hourOfDay2 + 
+                           (1|minutesSinceStart), 
+                           family = poisson,
+                           data = df)
+summary(poisson_model_quad)
+check_model(poisson_model_quad)
+```
+
+```{r}
+library(glmmTMB)
+
+# Center hour of day to reduce collinearity
+df <- df %>%
+  mutate(
+    hourOfDay_centered = hourOfDay - mean(hourOfDay),
+    hourOfDay2_centered = hourOfDay_centered^2
+  )
+
+# Fit zero-inflated negative binomial model
+zinb_model <- glmmTMB(seals ~ tide + avgTemp + hourOfDay_centered + hourOfDay2_centered + 
+                      (1|minutesSinceStart),
+                      zi = ~ tide + hourOfDay_centered,  # model excess zeros
+                      family = nbinom2,
+                      data = df)
+
+# Check summary
+summary(zinb_model)
+```
+
+```{r}
+library(glmmTMB)
+
+# First, let's look at the actual distribution of seals when present
+df %>%
+  filter(seals > 0) %>%
+  ggplot(aes(x = seals)) +
+  geom_histogram(binwidth = 1) +
+  ggtitle("Distribution of Non-Zero Seal Counts")
+
+# Try a hurdle model instead
+# This models presence/absence separately from count when present
+hurdle_model <- glmmTMB(seals ~ tide + avgTemp + hourOfDay_centered + hourOfDay2_centered + 
+                        (1|minutesSinceStart),
+                        ziformula = ~tide + hourOfDay_centered,
+                        family = truncated_nbinom2,
+                        data = df)
+
+# Alternative: consider separate models for:
+# 1. Presence/absence (binomial)
+presence_model <- glmer(seals > 0 ~ tide + avgTemp + hourOfDay_centered + 
+                       hourOfDay2_centered + (1|minutesSinceStart),
+                       family = binomial,
+                       data = df)
+
+# 2. Count when present
+count_model <- glmer.nb(seals ~ tide + avgTemp + hourOfDay_centered + 
+                        hourOfDay2_centered + (1|minutesSinceStart),
+                        data = filter(df, seals > 0))
+```
+
+```{r}
+
+# Option 1: Group minutes into larger time blocks (e.g., hours)
+df_counts <- df %>%
+  filter(seals > 0) %>%
+  mutate(
+    log_seals = log(seals),
+    # Round minutesSinceStart to nearest hour
+    hourBlock = round(minutesSinceStart/60)
+  )
+
+# Try model with hourBlock as random effect
+model1 <- lmer(log_seals ~ tide + avgTemp + hourOfDay_centered + 
+               hourOfDay2_centered + (1|hourBlock),
+               data = df_counts)
+
+# Create dataset with proper date parsing
+df_counts <- df %>%
+  filter(seals > 0) %>%
+  mutate(
+    log_seals = log(seals),
+    date = as.Date(mdy_hms(date))  # Parse the date properly first
+  )
+
+# Try model with date as random effect
+model_date <- lmer(log_seals ~ tide + avgTemp + hourOfDay_centered + 
+                  hourOfDay2_centered + (1|date),
+                  data = df_counts)
+
+# Alternative without random effect
+model_fixed <- lm(log_seals ~ tide + avgTemp + hourOfDay_centered + 
+                 hourOfDay2_centered,
+                 data = df_counts)
+
+# Compare models
+AIC(model_date, model_fixed)
+
+# Check diagnostics for better model
+par(mfrow = c(2,2))
+plot(model_date)  # or plot(model_fixed) depending on which is better
+
+# Try model with date as random effect
+model2 <- lmer(log_seals ~ tide + avgTemp + hourOfDay_centered +
+               hourOfDay2_centered + (1|date),
+               data = df_counts)
+
+# Option 3: Drop random effect and use regular lm
+model3 <- lm(log_seals ~ tide + avgTemp + hourOfDay_centered + 
+             hourOfDay2_centered,
+             data = df_counts)
+
+# Compare models that successfully fit
+AIC(model2, model3)  # Add model1 if it works
+```
